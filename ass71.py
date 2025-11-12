@@ -39,3 +39,81 @@ plt.xlabel("Annual Income (k$)")
 plt.ylabel("Spending Score (1-100)")
 plt.title("PSO Clustering on Customer Dataset")
 plt.show()
+
+
+
+# 🧠 Let’s break it down carefully:
+
+# Input: positions → each particle’s position represents cluster centroids.
+# (Each particle = possible clustering solution)
+
+# Line	Explanation
+# n_particles = positions.shape[0]	Number of particles (solutions in the swarm)
+# cost = np.zeros(n_particles)	Initialize cost array for all particles
+# for i in range(n_particles):	For every particle, calculate its fitness (cost)
+# centroids = positions[i].reshape(k, X.shape[1])	Reshape the flat position vector into k centroids (each has 3 features)
+# d = np.linalg.norm(X[:, None] - centroids[None, :], axis=2)	Compute distance between each data point and each centroid
+# np.min(d, axis=1)	Find nearest centroid for each point
+# np.sum(np.min(d, axis=1)**2)	Sum of squared distances (SSE — same as K-Means objective)
+# return cost	Return all particles’ costs
+
+# ✅ Goal of PSO: minimize this cost → minimize distance between points and their assigned cluster centers.
+
+# 🐦 Initialize the PSO Optimizer
+# options = {'c1': 1.5, 'c2': 1.5, 'w': 0.5}
+# optimizer = GlobalBestPSO(n_particles=20, dimensions=k*X.shape[1], options=options)
+
+
+# Explanation:
+
+# PSO Parameters:
+
+# n_particles=20 → 20 possible clustering solutions (particles)
+
+# dimensions=k*X.shape[1] → each particle has 4 clusters × 3 features = 12 dimensions
+
+# options:
+
+# c1=1.5 → cognitive coefficient (how much a particle trusts itself)
+
+# c2=1.5 → social coefficient (how much it trusts the swarm’s best)
+
+# w=0.5 → inertia weight (controls momentum from previous velocity)
+
+# 💡 The optimizer moves each particle in search of the global best centroids.
+
+# 🧭 Run the Optimization
+# best_cost, best_pos = optimizer.optimize(cost_function, iters=50)
+# best_centroids = best_pos.reshape(k, X.shape[1])
+
+
+# Explanation:
+
+# Runs PSO for 50 iterations
+
+# Each iteration updates particle positions to minimize cost function
+
+# Returns:
+
+# best_cost → lowest clustering error found
+
+# best_pos → position (centroids) of the best solution
+
+# Reshape that best position into centroid coordinates (4×3)
+
+# ✅ best_centroids now contains final cluster centers found by PSO.
+
+# 🏷️ Assign Each Data Point to a Cluster
+# labels = np.argmin(np.linalg.norm(X[:, None] - best_centroids[None, :], axis=2), axis=1)
+
+
+# Explanation:
+
+# Calculates distances from each data point to each centroid
+
+# Finds the index of the nearest centroid → gives the cluster label
+
+# labels = array of integers (0 to 3)
+
+# 💡 Same as K-Means’ assignment step but using PSO-optimized centroids.
+
