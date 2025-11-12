@@ -1,44 +1,54 @@
-import pandas as pd
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import linear_kernel, pairwise_distances
-from sklearn.decomposition import TruncatedSVD
-from scipy.sparse import csr_matrix
+import numpy as np, matplotlib.pyplot as plt
 
-# Data
-movies = pd.DataFrame({
- 'title':['The Shawshank Redemption','The Godfather','The Dark Knight','Pulp Fiction','The Lord of the Rings: The Return of the King'],
- 'genres':['Drama','Crime, Drama','Action, Crime, Drama','Crime, Drama','Action, Adventure, Fantasy'],
- 'desc':['Two imprisoned men bond.','Patriarch transfers crime dynasty.','Joker wreaks havoc.','Mob hitmen tales.','Gandalf vs Sauron.']
-})
-movies['content']=movies['genres']+' '+movies['desc']
+# --- Triangular MF (safe version) ---
+def trimf(x,a,b,c):
+    if a==b and x<=b: return 1.0 if x==b else 0.0
+    if b==c and x>=b: return 1.0 if x==b else 0.0
+    if x<=a or x>=c: return 0.0
+    elif x<=b: return (x-a)/(b-a)
+    else: return (c-x)/(c-b)
 
-ratings=pd.DataFrame({
- 'user_id':[1,1,1,2,2,3,3],
- 'title':['The Shawshank Redemption','The Godfather','The Dark Knight','The Dark Knight','Pulp Fiction','The Shawshank Redemption','Pulp Fiction'],
- 'rating':[5,4,5,4,5,5,4]
-})
+# --- Fuzzy sets ---
+err = [lambda x: trimf(x,-30,-30,0),
+       lambda x: trimf(x,-10,0,10),
+       lambda x: trimf(x,0,30,30)]
+derr = [lambda x: trimf(x,-10,-10,0),
+        lambda x: trimf(x,-3,0,3),
+        lambda x: trimf(x,0,10,10)]
+u_sets = [lambda x: trimf(x,-20,-20,-10),
+          lambda x: trimf(x,-15,-7,0),
+          lambda x: trimf(x,-3,0,3),
+          lambda x: trimf(x,0,7,15),
+          lambda x: trimf(x,10,20,20)]
+u_univ = np.linspace(-20,20,401)
 
-# Models
-tfidf = TfidfVectorizer(stop_words='english')
-cos_sim = linear_kernel(tfidf.fit_transform(movies['content']))
-mat = csr_matrix(ratings.pivot(index='user_id', columns='title', values='rating').fillna(0).values)
-latent = TruncatedSVD(2).fit_transform(mat)
+# --- Fuzzy rules ---
+def rules(e,de):
+    E=[f(e) for f in err]; DE=[f(de) for f in derr]
+    return [
+        (min(E[0],DE[0]),u_sets[0]),(min(E[0],DE[1]),u_sets[1]),(min(E[0],DE[2]),u_sets[2]),
+        (min(E[1],DE[0]),u_sets[1]),(min(E[1],DE[1]),u_sets[2]),(min(E[1],DE[2]),u_sets[3]),
+        (min(E[2],DE[0]),u_sets[2]),(min(E[2],DE[1]),u_sets[3]),(min(E[2],DE[2]),u_sets[4])
+    ]
 
-# Functions
-def content_rec(title):
-    idx = movies.index[movies['title']==title][0]
-    sim = sorted(list(enumerate(cos_sim[idx])), key=lambda x:x[1], reverse=True)[1:4]
-    return [movies['title'][i[0]] for i in sim]
+# --- Aggregate + defuzzify ---
+def defuzz(e,de):
+    agg=np.zeros_like(u_univ)
+    for s,mf in rules(e,de):
+        agg=np.maximum(agg,[min(s,mf(u)) for u in u_univ])
+    return np.sum(agg*u_univ)/np.sum(agg) if np.sum(agg)>0 else 0
 
-def collab_rec(uid):
-    i = ratings['user_id'].unique().tolist().index(uid)
-    sim = pairwise_distances(latent[i].reshape(1,-1), latent, metric='cosine')[0].argsort()[:3]
-    rec = []
-    [rec.extend(ratings[ratings['user_id']==ratings['user_id'].unique()[j]]['title']) for j in sim]
-    return list(set(rec))
+# --- Simulation ---
+angle,target,dt,gain=0,90,0.1,0.05
+t_hist,a_hist,u_hist=[],[],[]
+for t in np.arange(0,40,dt):
+    e,de=target-angle,(target-angle)/dt
+    u=np.clip(defuzz(e,de),-20,20)
+    angle+=gain*u*dt
+    t_hist.append(t); a_hist.append(angle); u_hist.append(u)
+    if abs(e)<0.2: break
 
-def hybrid(uid, title):
-    return list(set(content_rec(title) + collab_rec(uid)))
-
-# Output
-print("Hybrid Recommendations:", hybrid(1, 'The Godfather'))
+# --- Plots ---
+plt.subplot(1,2,1); plt.plot(t_hist,a_hist); plt.axhline(target,ls='--'); plt.title("Angle vs Time")
+plt.subplot(1,2,2); plt.plot(t_hist,u_hist); plt.title("Control vs Time")
+plt.show()
